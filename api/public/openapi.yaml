@@ -1,0 +1,646 @@
+openapi: 3.0.3
+info:
+  title: HealthVault API
+  description: |
+    A simplified healthcare data management system with immutable storage for encrypted medical data, centralized patient consent management, and emergency access override. 
+    Data is encrypted client-side with zero-knowledge encryption (e.g., AES-256), with encryption and decryption handled by client applications. 
+    Logs, consents, and emergency accesses are stored immutably with sequential identifiers to detect tampering. 
+    Delete endpoints are omitted, but external database deletions create detectable gaps. 
+    Multiple database state copies ensure redundancy.
+
+    ## Key Features
+    - Immutable data storage with sequential log identifiers
+    - Client-side zero-knowledge encryption (implementation left to developers)
+    - Permanent medical professional identities via NIN
+    - Institutional data management
+    - Centralized patient consent management with short-lived consent tokens
+    - Emergency access override for minimal critical data without strict consent
+    - No delete endpoints to ensure immutability via API
+    - External deletions create detectable gaps in log sequence
+
+    ## Storage Details
+    - Logs, records, consents, and emergency accesses are stored in a database (e.g., PostgreSQL, MongoDB) with sequential identifiers or hash chains.
+    - Deleting a log externally creates gaps, detectable if subsequent logs reference the deleted log.
+    - Consent and emergency access records are stored centrally and checked before data access.
+    - Multiple database replicas maintain redundant copies for integrity.
+
+    ## Emergency Access
+    - Provides minimal patient data (e.g., allergies, blood type, medications) in emergencies without requiring prior consent.
+    - Access is logged immutably and requires post-event review by implementers.
+    - Developers handle authorization (e.g., who qualifies as emergency staff, verification process).
+
+    ## Notes
+    - Client applications handle encryption/decryption and key management.
+    - Privacy compliance (e.g., GDPR, HIPAA, NDPR) is partially supported via centralized consent and emergency logging, but implementers must ensure full compliance.
+    - Developers control who can request emergency access and how they are verified.
+  version: 1.0.0
+  contact:
+    name: HealthVault API Support
+    url: https://healthvault.api
+    email: support@healthvault.api
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+servers:
+  - url: https://api.healthvault.ng/v1
+    description: Production server
+  - url: https://staging-api.healthvault.ng/v1
+    description: Staging server
+  - url: http://localhost:3000/v1
+    description: Development server
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+paths:
+  /institutions/register:
+    post:
+      tags:
+        - Institution Management
+      summary: Register a healthcare institution
+      description: Creates an institution record for managing staff and patient data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - license
+                - admin_email
+              properties:
+                name:
+                  type: string
+                  example: General Hospital Lagos
+                license:
+                  type: string
+                  example: MED_LIC_12345
+                admin_email:
+                  type: string
+                  format: email
+                  example: admin@generalhospital.ng
+      responses:
+        201:
+          description: Institution registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  institution_id:
+                    type: string
+                    example: general_hospital_lagos
+                  api_key:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  log_id:
+                    type: string
+                    example: LOG_001
+        400:
+          $ref: '#/components/responses/BadRequest'
+        409:
+          $ref: '#/components/responses/Conflict'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /staff/register:
+    post:
+      tags:
+        - Staff Management
+      summary: Register a medical professional
+      description: Registers a medical professional with a unique NIN, logging the action immutably.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nin
+                - name
+                - institution_id
+              properties:
+                nin:
+                  type: string
+                  pattern: ^[0-9]{11}$
+                  example: '12345678901'
+                name:
+                  type: string
+                  example: Dr. John Adebayo
+                institution_id:
+                  type: string
+                  example: general_hospital_lagos
+                role:
+                  type: string
+                  enum:
+                    - doctor
+                    - nurse
+                    - admin
+                    - paramedic
+                  example: doctor
+      responses:
+        201:
+          description: Staff registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nin:
+                    type: string
+                  created_at:
+                    type: string
+                    format: date-time
+                  log_id:
+                    type: string
+                    example: LOG_002
+        400:
+          $ref: '#/components/responses/BadRequest'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /patients/register:
+    post:
+      tags:
+        - Patient Management
+      summary: Register a patient
+      description: Creates a patient record for storing encrypted medical data, logged immutably.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nin
+                - first_name
+                - last_name
+              properties:
+                nin:
+                  type: string
+                  pattern: ^[0-9]{11}$
+                  example: '98765432109'
+                first_name:
+                  type: string
+                  example: John
+                last_name:
+                  type: string
+                  example: Doe
+                date_of_birth:
+                  type: string
+                  format: date
+                  example: '1985-06-15'
+                emergency_info:
+                  type: object
+                  properties:
+                    blood_type:
+                      type: string
+                      example: O+
+                    critical_allergies:
+                      type: array
+                      items:
+                        type: string
+                      example: ['penicillin']
+                    current_medications:
+                      type: array
+                      items:
+                        type: string
+                      example: ['metformin']
+      responses:
+        201:
+          description: Patient registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patient_id:
+                    type: string
+                    example: MED123456
+                  created_at:
+                    type: string
+                    format: date-time
+                  log_id:
+                    type: string
+                    example: LOG_003
+        400:
+          $ref: '#/components/responses/BadRequest'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /records/create:
+    post:
+      tags:
+        - Medical Records
+      summary: Store a medical record
+      description: Stores an encrypted medical record with a sequential log identifier. Client handles encryption.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patient_id
+                - encrypted_data
+              properties:
+                patient_id:
+                  type: string
+                  example: MED123456
+                encrypted_data:
+                  type: string
+                  description: Client-side encrypted data (base64-encoded)
+                  example: VGhpcyBpcyBlbmNyeXB0ZWQgZGF0YQ==
+                record_type:
+                  type: string
+                  enum:
+                    - diagnosis
+                    - medication
+                    - lab_result
+                    - emergency_info
+                  example: diagnosis
+      responses:
+        201:
+          description: Record stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record_id:
+                    type: string
+                    example: REC_001
+                  created_at:
+                    type: string
+                    format: date-time
+                  log_id:
+                    type: string
+                    example: LOG_004
+                  previous_log_id:
+                    type: string
+                    example: LOG_003
+        400:
+          $ref: '#/components/responses/BadRequest'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /records/patient/{patientId}:
+    get:
+      tags:
+        - Medical Records
+      summary: Retrieve patient medical records
+      description: Returns encrypted medical records for a patient if the requesting entity has valid consent or emergency access. Emergency access returns only emergency_info records.
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: MED123456
+        - name: record_type
+          in: query
+          schema:
+            type: string
+            enum:
+              - diagnosis
+              - medication
+              - lab_result
+              - emergency_info
+        - name: X-Consent-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Consent token for standard access (not required for emergency access)
+        - name: X-Emergency-Access-Token
+          in: header
+          required: false
+          schema:
+            type: string
+          description: Emergency access token (restricts to emergency_info records)
+      responses:
+        200:
+          description: Encrypted patient records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patient_id:
+                    type: string
+                  records:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        record_id:
+                          type: string
+                        record_type:
+                          type: string
+                        encrypted_data:
+                          type: string
+                        created_at:
+                          type: string
+                          format: date-time
+                        log_id:
+                          type: string
+                          example: LOG_004
+                  log_id:
+                    type: string
+                    example: LOG_005
+        403:
+          $ref: '#/components/responses/Forbidden'
+        404:
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /patients/{patientId}/consent:
+    post:
+      tags:
+        - Consent Management
+      summary: Grant or revoke patient consent for data access
+      description: Records or updates patient consent for an institution or doctor to access their records. Returns a consent token for use in record retrieval.
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: MED123456
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - consented_entity
+                - consent_granted
+              properties:
+                consented_entity:
+                  type: object
+                  properties:
+                    institution_id:
+                      type: string
+                      example: general_hospital_lagos
+                    doctor_nin:
+                      type: string
+                      pattern: ^[0-9]{11}$
+                      example: '12345678901'
+                  oneOf:
+                    - required: [institution_id]
+                    - required: [doctor_nin]
+                consent_granted:
+                  type: boolean
+                  example: true
+                data_types:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - diagnosis
+                      - medication
+                      - lab_result
+                      - emergency_info
+                  example: ['diagnosis', 'medication']
+                expires_at:
+                  type: string
+                  format: date-time
+                  example: '2026-09-16T12:00:00Z'
+      responses:
+        201:
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  consent_id:
+                    type: string
+                    example: CONSENT_001
+                  consent_token:
+                    type: string
+                    description: Short-lived token proving consent
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  log_id:
+                    type: string
+                    example: LOG_006
+                  created_at:
+                    type: string
+                    format: date-time
+        400:
+          $ref: '#/components/responses/BadRequest'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+    get:
+      tags:
+        - Consent Management
+      summary: Retrieve patient consent status
+      description: Returns active consents for a patient.
+      parameters:
+        - name: patientId
+          in: path
+          required: true
+          schema:
+            type: string
+          example: MED123456
+      responses:
+        200:
+          description: Patient consent details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  patient_id:
+                    type: string
+                  consents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        consent_id:
+                          type: string
+                        consented_entity:
+                          type: object
+                          properties:
+                            institution_id:
+                              type: string
+                            doctor_nin:
+                              type: string
+                        data_types:
+                          type: array
+                          items:
+                            type: string
+                        granted_at:
+                          type: string
+                          format: date-time
+                        expires_at:
+                          type: string
+                          format: date-time
+                        log_id:
+                          type: string
+        404:
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+  /emergency/access:
+    post:
+      tags:
+        - Emergency Access
+      summary: Request emergency access to minimal patient data
+      description: Grants short-lived access to critical patient data (emergency_info records) without requiring prior consent. Developers handle authorization of requesters.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - patient_id
+                - requesting_entity
+                - justification
+              properties:
+                patient_id:
+                  type: string
+                  example: MED123456
+                requesting_entity:
+                  type: object
+                  properties:
+                    institution_id:
+                      type: string
+                      example: general_hospital_lagos
+                    doctor_nin:
+                      type: string
+                      pattern: ^[0-9]{11}$
+                      example: '12345678901'
+                  oneOf:
+                    - required: [institution_id]
+                    - required: [doctor_nin]
+                justification:
+                  type: string
+                  description: Reason for emergency access
+                  example: Patient unconscious, cardiac arrest
+                location:
+                  type: string
+                  example: Lagos University Teaching Hospital
+      responses:
+        201:
+          description: Emergency access granted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  emergency_access_id:
+                    type: string
+                    example: EMERG_001
+                  emergency_access_token:
+                    type: string
+                    description: Short-lived token for accessing emergency_info records
+                    example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  log_id:
+                    type: string
+                    example: LOG_007
+                  expires_at:
+                    type: string
+                    format: date-time
+                    example: '2025-09-16T14:00:00Z'
+        400:
+          $ref: '#/components/responses/BadRequest'
+        404:
+          $ref: '#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for authenticated requests
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for institution-specific access
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: VALIDATION_ERROR
+              message:
+                type: string
+                example: Invalid input data
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: NOT_FOUND
+              message:
+                type: string
+                example: Resource not found
+    Conflict:
+      description: Resource already exists
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: ALREADY_EXISTS
+              message:
+                type: string
+                example: Resource already registered
+    Forbidden:
+      description: Access forbidden
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: ACCESS_DENIED
+              message:
+                type: string
+                example: No valid consent or emergency access token
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+tags:
+  - name: Institution Management
+    description: Register and manage healthcare institutions
+  - name: Staff Management
+    description: Register medical professionals
+  - name: Patient Management
+    description: Register patients and manage their data
+  - name: Medical Records
+    description: Store and retrieve encrypted medical records
+  - name: Consent Management
+    description: Manage patient consent for data access
+  - name: Emergency Access
+    description: Emergency access to minimal patient data
