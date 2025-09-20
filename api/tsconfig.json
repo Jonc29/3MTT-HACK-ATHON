@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2024", // modern JS syntax
+    "module": "es2022", // emit ES modules
+    "moduleResolution": "node",
+    "outDir": "dist", // compiled JS goes here
+    "rootDir": ".", // where your TS source lives
+    "esModuleInterop": true, // allows default imports from CommonJS
+    "forceConsistentCasingInFileNames": true,
+    "strict": true, // strict type checking
+    "skipLibCheck": true // skip type checking of node_modules
+  },
+  "include": ["**/*.ts"], // all TS files
+  "exclude": ["node_modules"]
+}
