@@ -1,38 +1,58 @@
 import type { Request, Response } from 'express';
-import YAML from 'yamljs';
-import path from 'path';
-import fs from 'fs';
+import * as YAML from 'yaml';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const openapiPath = path.join(process.cwd(), 'public', 'openapi.yaml');
 
-export const home = (req: Request, res: Response) => {
+interface Parameter {
+  name: string;
+  in: string;
+  required: boolean;
+  type: string;
+  description: string;
+}
+
+interface Route {
+  method: string;
+  route: string;
+  summary: string;
+  description: string;
+  tags: string[];
+  parameters: Parameter[];
+}
+
+export const home = (req: Request, res: Response): void => {
   try {
     if (!fs.existsSync(openapiPath)) {
-      return res.status(500).json({ error: 'OpenAPI file not found' });
+      res.status(500).json({ error: 'OpenAPI file not found' });
+      return;
     }
 
-    const doc = YAML.load(openapiPath);
+    const fileContents = fs.readFileSync(openapiPath, 'utf8');
+    const doc = YAML.parse(fileContents) as any;
 
-    const routes = Object.entries(doc.paths || {}).flatMap(([route, methods]: [string, any]) => {
-      return Object.entries(methods).map(([method, info]: [string, any]) => {
-        const params = (info.parameters || []).map((p: any) => ({
-          name: p.name,
-          in: p.in,
-          required: p.required || false,
-          type: p.schema?.type || 'string',
-          description: p.description || '',
-        }));
+    const routes: Route[] = Object.entries(doc.paths || {}).flatMap(
+      ([route, methods]: [string, any]) =>
+        Object.entries(methods).map(([method, info]: [string, any]) => {
+          const params: Parameter[] = (info.parameters || []).map((p: any) => ({
+            name: p.name,
+            in: p.in,
+            required: p.required || false,
+            type: p.schema?.type || 'string',
+            description: p.description || '',
+          }));
 
-        return {
-          method: method.toUpperCase(),
-          route,
-          summary: info.summary || '',
-          description: info.description || '',
-          tags: info.tags || [],
-          parameters: params,
-        };
-      });
-    });
+          return {
+            method: method.toUpperCase(),
+            route,
+            summary: info.summary || '',
+            description: info.description || '',
+            tags: info.tags || [],
+            parameters: params,
+          };
+        })
+    );
 
     res.status(200).json(routes);
   } catch (err) {
